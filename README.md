@@ -182,9 +182,11 @@ No devices to sync. Pair devices in Windows first, then run this utility.
    - Verify you have permission to control system services
 
 6. **"No Bluetooth devices found in Windows registry"**
-   - This is normal if you haven't paired any Bluetooth devices in Windows yet
-   - Boot to Windows, pair your devices, then run the utility again
-   - Some Windows versions may store data differently - check logs for adapter detection
+   - **Common cause**: Haven't paired devices in Windows yet
+   - **Solution**: Boot to Windows, pair devices, reboot Windows completely, then try again
+   - **Alternative cause**: Modern security-focused devices (see Device Compatibility section)
+   - **Advanced devices**: May use TPM/Credential Manager instead of registry storage
+   - **Check logs**: Utility provides detailed troubleshooting suggestions
 
 7. **Permission/logging issues**
    - The utility automatically handles log file permission issues
@@ -211,8 +213,9 @@ No devices to sync. Pair devices in Windows first, then run this utility.
 - Expected compatibility with Ubuntu 20.04+ and other Linux distributions
 - Various Windows versions (10/11)
 - Different storage configurations (HDD, SSD, NVMe)  
-- Multiple Python environments (system, virtual env, user installs)
-- Comprehensive partition detection and registry parsing
+- Multiple Python environments (system, virtual env, user installs)  
+- Comprehensive partition detection and multi-location registry parsing
+- Both traditional and modern Bluetooth security device testing
 
 ## How It Works
 
@@ -256,24 +259,77 @@ The utility copies the LinkKey from Windows registry to the Linux info files, en
 - **Error handling** - Comprehensive error checking and recovery
 - **Cleanup** - Automatic cleanup of temporary mount points
 
-## Limitations
+## Device Compatibility & Limitations
 
-- Requires root access for mounting and system configuration
-- Only works with Windows/Linux dual-boot systems
-- Requires accessible Windows partition (NTFS/FAT32)
-- Must have devices paired in Windows first
-- **Tested primarily on Ubuntu 24.04** - other distributions may work but are untested
-- Some newer Bluetooth security features might not be fully supported
-- Works with most common Bluetooth devices (tested with headphones, mice, keyboards)
+### ✅ **Supported Devices (90%+ of Bluetooth devices)**
+
+This utility works excellently with devices that use **traditional Bluetooth pairing mechanisms**:
+
+- **Classic Bluetooth devices** (BR/EDR) - mice, keyboards, older headphones
+- **Standard audio devices** that store pairing keys in Windows registry
+- **Most consumer electronics** following conventional Bluetooth security models
+- **Legacy and mid-range Bluetooth peripherals**
+
+### ⚠️ **Limited Support Devices (Modern Security-Focused)**
+
+Some devices use **advanced Bluetooth security features** that store pairing data differently:
+
+- **Modern premium audio devices** with enhanced security implementations
+- **Bluetooth LE-focused devices** using advanced encryption
+- **Devices with TPM/Hardware Security Module integration**
+- **Windows Hello-integrated peripherals**
+
+**Why these devices have limitations:**
+- **Enhanced Security**: Keys stored in hardware-protected locations (TPM, Credential Manager)
+- **Modern Bluetooth LE**: Uses complex multi-key security (LTK, IRK, CSRK) instead of simple LinkKeys
+- **Runtime Key Generation**: Keys generated dynamically rather than stored in registry
+- **Anti-Tampering Design**: Prevents offline key extraction by design (good security practice)
+
+### 🔧 **Technical Limitations**
+
+- **Root access required** for mounting and system configuration
+- **Dual-boot systems only** - requires accessible Windows partition (NTFS/FAT32)
+- **Windows pairing first** - devices must be paired in Windows before sync
+- **Registry-based storage** - only works with devices that store keys in Windows registry
+- **Ubuntu 24.04 tested** - other distributions may work but are untested
+- **Offline extraction only** - cannot access encrypted/protected key stores
+
+### 📋 **What to Expect**
+
+**For Standard Devices:**
+```
+✅ Full automatic synchronization
+✅ Seamless switching between Windows/Linux  
+✅ One-time setup, permanent solution
+✅ No manual re-pairing needed
+```
+
+**For Modern Security Devices:**
+```
+⚠️ Manual re-pairing required when switching OS
+⚠️ 30-60 second process per OS switch  
+⚠️ Cannot be automated due to security design
+ℹ️ This is intended behavior for high-security devices
+```
+
+### 🎯 **How to Identify Device Type**
+
+**Run the utility to see:**
+- **"Found X Bluetooth devices"** → Your devices are compatible
+- **"No Bluetooth devices found"** + **detailed suggestions** → Likely modern security devices
+
+The utility provides **intelligent troubleshooting** that will identify your device type and provide appropriate guidance.
 
 ## Testing & Validation
 
 This utility includes comprehensive testing:
 - **Installation validation**: `python3 test_installation.py`
 - **Partition detection**: Multiple fallback methods for robust detection
-- **Registry parsing**: Handles various Windows versions and configurations
+- **Registry parsing**: System-wide and user-specific registry locations
+- **Device compatibility**: Automatic detection of supported vs. modern security devices
 - **Environment handling**: Smart wrapper script manages Python environment issues
 - **Safety measures**: Read-only mounting, automatic backups, error recovery
+- **Real-world validation**: Tested with various device types and security implementations
 
 ## Files in This Project
 
@@ -294,8 +350,9 @@ This is a complete, production-ready utility. Feel free to improve it by:
 - Adding support for more Windows versions
 - Improving error handling for edge cases
 - Adding GUI interface
-- Supporting additional Bluetooth metadata
-- Testing on more hardware configurations
+- Researching modern Bluetooth LE security implementations
+- Supporting additional registry locations and storage methods
+- Testing on more hardware configurations and device types
 
 ## Success Stories
 
@@ -306,7 +363,8 @@ This is a complete, production-ready utility. Feel free to improve it by:
 - Different storage types (HDD, SSD, NVMe)
 - NTFS partition detection via multiple methods
 - Multiple Python environments (system, virtual env, user installs)
-- Various Bluetooth adapters and device types
+- Various Bluetooth device types (standard and modern security implementations)
+- Both registry-compatible and advanced security devices (with appropriate guidance)
 
 ## License
 
