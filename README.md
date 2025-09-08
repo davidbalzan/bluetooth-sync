@@ -20,9 +20,9 @@ When you dual-boot Windows and Linux, Bluetooth devices need to be re-paired whe
 
 ## Requirements
 
-- Ubuntu/Linux system with dual-boot Windows setup
+- Linux system with dual-boot Windows setup (tested on Ubuntu 24.04)
 - Root privileges (sudo access)
-- Python 3.6 or higher
+- Python 3.6 or higher (tested with Python 3.13.3)
 - Windows partition accessible (NTFS/FAT32)
 
 ## Installation
@@ -207,7 +207,8 @@ No devices to sync. Pair devices in Windows first, then run this utility.
 ## Project Status
 
 ✅ **COMPLETE & TESTED** - This utility has been successfully tested on real dual-boot systems with:
-- Ubuntu 20.04+ and other Linux distributions
+- **Ubuntu 24.04** (primary testing environment) with Python 3.13.3
+- Expected compatibility with Ubuntu 20.04+ and other Linux distributions
 - Various Windows versions (10/11)
 - Different storage configurations (HDD, SSD, NVMe)  
 - Multiple Python environments (system, virtual env, user installs)
@@ -261,6 +262,7 @@ The utility copies the LinkKey from Windows registry to the Linux info files, en
 - Only works with Windows/Linux dual-boot systems
 - Requires accessible Windows partition (NTFS/FAT32)
 - Must have devices paired in Windows first
+- **Tested primarily on Ubuntu 24.04** - other distributions may work but are untested
 - Some newer Bluetooth security features might not be fully supported
 - Works with most common Bluetooth devices (tested with headphones, mice, keyboards)
 
@@ -298,7 +300,8 @@ This is a complete, production-ready utility. Feel free to improve it by:
 ## Success Stories
 
 ✅ **Successfully tested on:**
-- Ubuntu 20.04+ with Python 3.8+
+- **Ubuntu 24.04** with Python 3.13.3 (primary testing)
+- Expected compatibility with Ubuntu 20.04+ and Python 3.8+
 - Various Windows versions (10/11) on dual-boot systems
 - Different storage types (HDD, SSD, NVMe)
 - NTFS partition detection via multiple methods
