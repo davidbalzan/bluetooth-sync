@@ -23,6 +23,8 @@ import json
 import re
 import shutil
 import tempfile
+import glob
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
@@ -297,6 +299,24 @@ class BluetoothSyncUtility:
         logger.info("Parsing Windows Bluetooth registry...")
         devices = []
         
+        # Try system-wide registry first
+        devices.extend(self._parse_system_bluetooth_registry(registry_path))
+        
+        # Try user-specific registry hives
+        devices.extend(self._parse_user_bluetooth_registries())
+        
+        if len(devices) == 0:
+            logger.warning("No Bluetooth devices found in Windows registry")
+            self._provide_troubleshooting_suggestions()
+        
+        logger.info(f"Found {len(devices)} total Bluetooth devices in Windows registry")
+        return devices
+    
+    def _parse_system_bluetooth_registry(self, registry_path: Path) -> List[BluetoothDevice]:
+        """Parse system-wide Bluetooth registry (HKLM)"""
+        logger.info("Checking system-wide Bluetooth registry (HKEY_LOCAL_MACHINE)...")
+        devices = []
+        
         try:
             with open(registry_path, 'rb') as f:
                 registry = Registry.Registry(f)
@@ -318,7 +338,7 @@ class BluetoothSyncUtility:
                     # Each subkey under Keys represents a Bluetooth adapter
                     for adapter_key in keys_key.subkeys():
                         adapter_mac = adapter_key.name()
-                        logger.info(f"Found Bluetooth adapter: {adapter_mac}")
+                        logger.info(f"Found Bluetooth adapter in system registry: {adapter_mac}")
                         
                         # Each subkey under adapter represents a paired device
                         for device_key in adapter_key.subkeys():
@@ -343,20 +363,210 @@ class BluetoothSyncUtility:
                                     link_key=link_key
                                 )
                                 devices.append(device)
-                                logger.info(f"Found Bluetooth device: {device.name} ({device.mac_address})")
+                                logger.info(f"Found Bluetooth device in system registry: {device.name} ({device.mac_address})")
                                 
                             except Exception as e:
-                                logger.warning(f"Could not parse device {device_mac}: {e}")
+                                logger.warning(f"Could not parse system device {device_mac}: {e}")
                                 continue
                                 
                 except Exception as e:
-                    logger.error(f"Could not navigate Bluetooth registry keys: {e}")
+                    logger.warning(f"Could not navigate system Bluetooth registry keys: {e}")
+                    logger.info("This might be normal - trying user-specific locations...")
                     
         except Exception as e:
-            logger.error(f"Failed to parse registry: {e}")
+            logger.error(f"Failed to parse system registry: {e}")
         
-        logger.info(f"Found {len(devices)} Bluetooth devices in Windows registry")
         return devices
+    
+    def _parse_user_bluetooth_registries(self) -> List[BluetoothDevice]:
+        """Parse user-specific Bluetooth registry hives"""
+        logger.info("Checking user-specific Bluetooth registry hives...")
+        devices = []
+        
+        if not self.windows_partition:
+            return devices
+        
+        mount_point = Path(self.windows_partition.mount_point)
+        
+        # Common paths for user registry hives
+        user_paths = [
+            'Users/*/ntuser.dat',
+            'Users/*/AppData/Local/Microsoft/Windows/UsrClass.dat',
+            'ProgramData/Microsoft/User Account Pictures/*/ntuser.dat'
+        ]
+        
+        for user_pattern in user_paths:
+            try:
+                # Find matching user registry files
+                pattern = str(mount_point / user_pattern)
+                user_registry_files = glob.glob(pattern)
+                
+                for user_reg_file in user_registry_files:
+                    try:
+                        logger.info(f"Checking user registry: {user_reg_file}")
+                        user_devices = self._parse_user_registry_file(Path(user_reg_file))
+                        devices.extend(user_devices)
+                    except Exception as e:
+                        logger.debug(f"Could not parse user registry {user_reg_file}: {e}")
+                        
+            except Exception as e:
+                logger.debug(f"Error searching user registries with pattern {user_pattern}: {e}")
+        
+        return devices
+    
+    def _parse_user_registry_file(self, registry_path: Path) -> List[BluetoothDevice]:
+        """Parse individual user registry file for Bluetooth data"""
+        devices = []
+        
+        try:
+            with open(registry_path, 'rb') as f:
+                registry = Registry.Registry(f)
+                
+                # Common user Bluetooth registry locations
+                bluetooth_paths = [
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Bluetooth",
+                    "SOFTWARE\\Microsoft\\Bluetooth",
+                    "Software\\Classes\\Bluetooth"
+                ]
+                
+                for bt_path in bluetooth_paths:
+                    try:
+                        bt_key = registry.open(bt_path)
+                        # Look for device-like subkeys (12 character hex strings)
+                        for subkey in bt_key.subkeys():
+                            subkey_name = subkey.name()
+                            if len(subkey_name) == 12 and all(c in '0123456789ABCDEF' for c in subkey_name.upper()):
+                                # This might be a Bluetooth device MAC
+                                try:
+                                    link_key_value = subkey.value("LinkKey")
+                                    link_key = link_key_value.value()
+                                    if isinstance(link_key, bytes):
+                                        link_key = link_key.hex().upper()
+                                    elif isinstance(link_key, str):
+                                        link_key = link_key.upper()
+                                    
+                                    mac_formatted = self._format_mac_address(subkey_name)
+                                    device_name = subkey_name  # Default
+                                    
+                                    try:
+                                        name_value = subkey.value("Name")
+                                        device_name = name_value.value()
+                                        if isinstance(device_name, bytes):
+                                            device_name = device_name.decode('utf-8', errors='ignore')
+                                    except:
+                                        pass
+                                    
+                                    device = BluetoothDevice(
+                                        name=device_name,
+                                        mac_address=mac_formatted,
+                                        link_key=link_key
+                                    )
+                                    devices.append(device)
+                                    logger.info(f"Found Bluetooth device in user registry: {device.name} ({device.mac_address})")
+                                    
+                                except Exception:
+                                    continue
+                                    
+                    except Exception:
+                        continue
+                        
+        except Exception as e:
+            logger.debug(f"Could not parse user registry file {registry_path}: {e}")
+        
+        return devices
+    
+    def _provide_troubleshooting_suggestions(self):
+        """Provide detailed troubleshooting suggestions when no devices are found"""
+        logger.info("📋 Troubleshooting suggestions:")
+        logger.info("   1. Make sure devices are paired and working in Windows")
+        logger.info("   2. Reboot Windows completely to force registry writes")
+        logger.info("   3. Some devices may need time to appear in registry")
+        logger.info("   4. Try pairing device again in Windows if recently unpaired")
+        
+        # Check for existing Linux paired devices
+        linux_devices = self._get_current_linux_devices()
+        if linux_devices:
+            logger.info("   5. Current Linux paired devices found:")
+            for device_mac, device_path in linux_devices.items():
+                try:
+                    with open(Path(device_path) / "info", 'r') as f:
+                        content = f.read()
+                        name_match = re.search(r'Name=(.+)', content)
+                        device_name = name_match.group(1) if name_match else "Unknown"
+                    logger.info(f"      - {device_name} ({device_mac})")
+                    logger.info(f"        Consider removing with: bluetoothctl remove {device_mac}")
+                except:
+                    logger.info(f"      - {device_mac}")
+        
+        # Check for recent Windows Bluetooth activity
+        recent_activity = self._check_recent_bluetooth_activity()
+        if recent_activity:
+            logger.info("   6. Recent Windows Bluetooth activity detected:")
+            for activity in recent_activity[:3]:  # Show top 3 most recent
+                logger.info(f"      - {activity}")
+            logger.info("      → This suggests devices were recently paired/unpaired in Windows")
+    
+    def _get_current_linux_devices(self) -> Dict[str, str]:
+        """Get currently configured Linux Bluetooth devices"""
+        linux_devices = {}
+        bt_config_dir = Path("/var/lib/bluetooth")
+        
+        try:
+            if bt_config_dir.exists():
+                for adapter_dir in bt_config_dir.iterdir():
+                    if adapter_dir.is_dir() and re.match(r'^[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}$', adapter_dir.name):
+                        for device_dir in adapter_dir.iterdir():
+                            if device_dir.is_dir() and re.match(r'^[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}$', device_dir.name):
+                                linux_devices[device_dir.name] = str(device_dir)
+        except Exception as e:
+            logger.debug(f"Could not check Linux devices: {e}")
+        
+        return linux_devices
+    
+    def _check_recent_bluetooth_activity(self) -> List[str]:
+        """Check for recent Bluetooth-related file modifications in Windows"""
+        activity = []
+        
+        if not self.windows_partition:
+            return activity
+        
+        mount_point = Path(self.windows_partition.mount_point)
+        
+        try:
+            # Check recent modifications in potential Bluetooth directories
+            search_paths = [
+                "Windows/System32/config",
+                "Users/*/AppData/Local/Microsoft/Windows",
+                "ProgramData/Microsoft/Windows"
+            ]
+            
+            current_time = time.time()
+            one_day_ago = current_time - (24 * 60 * 60)  # 24 hours
+            
+            for search_path in search_paths:
+                try:
+                    full_search_path = str(mount_point / search_path)
+                    
+                    # Find files modified in last 24 hours
+                    for file_path in glob.glob(f"{full_search_path}/**/*", recursive=True):
+                        try:
+                            if os.path.isfile(file_path):
+                                mod_time = os.path.getmtime(file_path)
+                                if mod_time > one_day_ago:
+                                    relative_path = os.path.relpath(file_path, mount_point)
+                                    if any(bt_keyword in relative_path.lower() for bt_keyword in ['bluetooth', 'bth', 'radio']):
+                                        hours_ago = int((current_time - mod_time) / 3600)
+                                        activity.append(f"{relative_path} (modified {hours_ago}h ago)")
+                        except:
+                            continue
+                            
+                except Exception as e:
+                    logger.debug(f"Could not check {search_path}: {e}")
+                    
+        except Exception as e:
+            logger.debug(f"Could not check recent activity: {e}")
+        
+        return sorted(activity)[:5]  # Return top 5 most relevant
     
     def _find_current_control_set(self, registry: Registry) -> Optional[str]:
         """Find the current control set in the registry"""
